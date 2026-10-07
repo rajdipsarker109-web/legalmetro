@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Owner Dashboard — LegalMetro</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="../assets/css/style.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-dark"><div class="container-fluid px-4">
+  <a class="navbar-brand" href="../index.html">⚖️ LegalMetro</a>
+  <span class="text-white-50" id="user-name"></span>
+  <button class="btn btn-outline-light btn-sm" id="logout-btn">Logout</button>
+</div></nav>
+<div class="layout-wrapper">
+  <aside class="sidebar"><nav id="sidebar-nav"></nav></aside>
+  <main class="main-content">
+    <h4 class="mb-4">Dashboard</h4>
+    <div id="expiry-alert"></div>
+    <div class="row g-3 mb-4" id="stats-row"></div>
+    <div class="d-flex justify-content-between align-items-center mb-3">
+      <h5>My Instruments</h5>
+      <a href="instrument-register.html" class="btn btn-primary btn-sm">+ Register Instrument</a>
+    </div>
+    <div class="row g-3" id="instruments-grid"></div>
+  </main>
+</div>
+<script src="../assets/js/api.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+if (!requireRole('business_owner')) throw '';
+initLayout('business_owner', 'dashboard');
+
+(async () => {
+  const instruments = await get('/instruments/') || [];
+  const verified = instruments.filter(i => i.current_status === 'verified').length;
+  const pending = instruments.filter(i => i.current_status === 'pending_verification').length;
+  const expired = instruments.filter(i => ['expired','failed'].includes(i.current_status)).length;
+  const expiring = instruments.filter(i => i.cert_valid_until && daysUntil(i.cert_valid_until) <= 30 && daysUntil(i.cert_valid_until) > 0);
+
+  if (expiring.length) {
+    document.getElementById('expiry-alert').innerHTML =
+      `<div class="alert alert-warning">⚠️ ${expiring.length} instrument(s) expire within 30 days!</div>`;
+  }
+
+  document.getElementById('stats-row').innerHTML = `
+    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${instruments.length}</div><div class="stat-label">Total Instruments</div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${verified}</div><div class="stat-label">Verified</div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${pending}</div><div class="stat-label">Pending</div></div></div>
+    <div class="col-md-3"><div class="stat-card"><div class="stat-value">${expired}</div><div class="stat-label">Expired/Failed</div></div></div>`;
+
+  document.getElementById('instruments-grid').innerHTML = instruments.length ? instruments.map(i => {
+    const days = daysUntil(i.cert_valid_until);
+    return `<div class="col-md-6 col-lg-4"><div class="card instrument-card h-100">
+      <div class="card-header">${i.instrument_type}</div>
+      <div class="card-body">
+        <p class="mb-1"><strong>${i.unique_instrument_id}</strong></p>
+        <p class="text-muted small">${i.make || ''} · ${i.serial_number || ''}</p>
+        <p>${statusBadge(i.current_status)}</p>
+        ${days !== null ? `<p class="small">${days > 0 ? days + ' days left' : 'Expired'}</p>` : ''}
+        <a href="instrument-detail.html?id=${i.id}" class="btn btn-sm btn-outline-primary">View</a>
+        ${days !== null && days <= 30 ? `<a href="application-new.html?instrument=${i.id}" class="btn btn-sm btn-accent">Renew</a>` : ''}
+      </div></div></div>`;
+  }).join('') : '<p class="text-muted">No instruments yet. <a href="instrument-register.html">Register one</a></p>';
+})();
+</script>
+</body>
+</html>

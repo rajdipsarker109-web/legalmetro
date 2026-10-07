@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Verify Instrument — LegalMetro</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="assets/css/style.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-dark"><div class="container">
+  <a class="navbar-brand" href="index.html">⚖️ LegalMetro</a>
+  <a href="index.html" class="btn btn-outline-light btn-sm">Home</a>
+</div></nav>
+<div class="container py-5">
+  <div id="loading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+  <div id="result" style="display:none">
+    <div id="status-banner" class="status-banner mb-4"></div>
+    <div class="card p-4 mb-4">
+      <h4 id="inst-id" class="mb-3"></h4>
+      <div class="row" id="inst-details"></div>
+      <div id="cert-download" class="mt-3"></div>
+    </div>
+    <h5>Verification History</h5>
+    <div id="history" class="timeline mt-3"></div>
+  </div>
+  <div id="not-found" style="display:none" class="text-center py-5">
+    <h3>❓ Instrument Not Found</h3>
+    <p class="text-muted">No instrument matches this ID. Please check and try again.</p>
+    <a href="index.html" class="btn btn-primary">Go Home</a>
+  </div>
+</div>
+<script src="assets/js/api.js"></script>
+<script src="assets/js/utils.js"></script>
+<script>
+const params = new URLSearchParams(window.location.search);
+const id = params.get('id');
+if (!id) { window.location.href = 'index.html'; }
+
+(async () => {
+  const data = await get(`/verify/${encodeURIComponent(id)}`);
+  document.getElementById('loading').style.display = 'none';
+  if (!data || data.error === 'not_found') {
+    document.getElementById('not-found').style.display = 'block';
+    return;
+  }
+  document.getElementById('result').style.display = 'block';
+  const inst = data.instrument;
+  const status = data.display_status;
+  const banner = document.getElementById('status-banner');
+  const banners = {
+    verified: ['alert-success', `✅ VERIFIED — Valid until ${formatDate(inst.cert_valid_until)}`],
+    expiring_soon: ['alert-warning', `⚠️ EXPIRING SOON — ${data.days_left} days left`],
+    expired: ['alert-danger', `🔴 EXPIRED — Expired on ${formatDate(inst.cert_valid_until)}`],
+    failed: ['alert-danger', '❌ FAILED VERIFICATION'],
+    pending_verification: ['alert-secondary', '⏳ PENDING VERIFICATION'],
+    registered: ['alert-secondary', '📋 REGISTERED — Not yet verified'],
+  };
+  const [cls, msg] = banners[status] || ['alert-secondary', status];
+  banner.className = `status-banner alert ${cls}`;
+  banner.textContent = msg;
+
+  document.getElementById('inst-id').textContent = inst.unique_instrument_id;
+  document.getElementById('inst-details').innerHTML = `
+    <div class="col-md-6"><p><strong>Type:</strong> ${inst.instrument_type}</p>
+    <p><strong>Make/Model:</strong> ${inst.make || '—'} / ${inst.model_name || '—'}</p>
+    <p><strong>Serial:</strong> ${inst.serial_number || '—'}</p></div>
+    <div class="col-md-6"><p><strong>Owner:</strong> ${inst.owner?.name || '—'} (${inst.owner?.organisation || ''})</p>
+    <p><strong>Location:</strong> ${inst.usage_district}, ${inst.usage_state}</p>
+    ${data.latest_certificate ? `<p><strong>Cert No:</strong> ${data.latest_certificate.certificate_number}</p>` : ''}</div>`;
+
+  if (data.latest_certificate) {
+    document.getElementById('cert-download').innerHTML =
+      `<a href="http://localhost:5000/api/certificates/${data.latest_certificate.id}/download"
+         class="btn btn-primary" target="_blank">Download Certificate</a>`;
+  }
+
+  document.getElementById('history').innerHTML = (data.history || []).map(h => `
+    <div class="timeline-item">
+      <strong>${h.event_type.replace(/_/g, ' ')}</strong>
+      <div class="text-muted small">${formatDate(h.timestamp)} — ${h.description || ''}</div>
+    </div>`).join('');
+})();
+</script>
+</body>
+</html>

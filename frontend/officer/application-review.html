@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Application Review — LegalMetro</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="../assets/css/style.css" rel="stylesheet">
+</head>
+<body>
+<nav class="navbar navbar-dark"><div class="container-fluid px-4">
+  <a class="navbar-brand" href="../index.html">⚖️ LegalMetro</a>
+  <button class="btn btn-outline-light btn-sm" id="logout-btn">Logout</button>
+</div></nav>
+<div class="layout-wrapper">
+  <aside class="sidebar"><nav id="sidebar-nav"></nav></aside>
+  <main class="main-content">
+    <div id="alert-box"></div>
+    <div id="loading" class="text-center py-5"><div class="spinner-border text-primary"></div></div>
+    <div id="review-content" style="display:none">
+      <h4>Application Review — <span id="inst-label"></span></h4>
+      <div class="step-indicator" id="step-ind"></div>
+
+      <!-- Step 1: Document Review -->
+      <div class="review-step card p-4" id="step1">
+        <h5>Step 1 — Document Review</h5>
+        <div id="doc-info" class="mb-3"></div>
+        <div id="doc-preview" class="mb-3"></div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-success" onclick="reviewDocs('approve')">Approve Documents</button>
+          <button class="btn btn-warning" onclick="reviewDocs('request_more')">Request More</button>
+          <button class="btn btn-danger" onclick="showRejectReason('docs')">Reject</button>
+        </div>
+        <div id="reject-reason-docs" style="display:none" class="mt-3">
+          <textarea class="form-control mb-2" id="reason-docs" placeholder="Reason..."></textarea>
+          <button class="btn btn-danger btn-sm" onclick="reviewDocs('reject')">Confirm Reject</button>
+        </div>
+      </div>
+
+      <!-- Step 2: Schedule -->
+      <div class="review-step card p-4" id="step2">
+        <h5>Step 2 — Schedule Inspection</h5>
+        <div class="row g-3">
+          <div class="col-md-6"><label class="form-label">Date & Time</label>
+            <input type="datetime-local" class="form-control" id="inspection_date"></div>
+          <div class="col-md-6"><label class="form-label">Inspection Type</label>
+            <div><label class="me-3"><input type="radio" name="itype" value="onsite" checked> Onsite</label>
+            <label><input type="radio" name="itype" value="walkin"> Walk-in</label></div></div>
+        </div>
+        <button class="btn btn-primary mt-3" onclick="scheduleInspection()">Schedule Inspection</button>
+      </div>
+
+      <!-- Step 3: Observations -->
+      <div class="review-step card p-4" id="step3">
+        <h5>Step 3 — Record Observations</h5>
+        <form id="obs-form" enctype="multipart/form-data">
+          <div class="row g-3">
+            <div class="col-md-6"><label class="form-label">Test Weights Used</label>
+              <input class="form-control" name="test_weights_used"></div>
+            <div class="col-md-3"><label class="form-label">Permissible Error</label>
+              <input type="number" step="0.0001" class="form-control" name="permissible_error_limit" id="perm-error"></div>
+            <div class="col-md-3"><label class="form-label">Actual Error</label>
+              <input type="number" step="0.0001" class="form-control" name="actual_error_observed" id="actual-error"></div>
+            <div class="col-12"><div id="error-result"></div></div>
+            <div class="col-md-4"><label class="form-label">Physical Condition</label>
+              <select class="form-select" name="physical_condition">
+                <option value="good">Good</option><option value="damaged">Damaged</option><option value="tampered">Tampered</option>
+              </select></div>
+            <div class="col-md-4"><label class="form-label d-block">&nbsp;</label>
+              <label><input type="checkbox" name="labels_compliant" value="true"> Labels Compliant</label></div>
+            <div class="col-md-4"><label class="form-label d-block">&nbsp;</label>
+              <label><input type="checkbox" name="previous_stamp_verified" value="true"> Stamp Verified</label></div>
+            <div class="col-md-6"><label class="form-label">Overall Result</label>
+              <select class="form-select" name="overall_result">
+                <option value="verified">Verified</option><option value="failed">Failed</option><option value="conditionally_approved">Conditional</option>
+              </select></div>
+            <div class="col-12"><label class="form-label">Inspector Notes</label>
+              <textarea class="form-control" name="inspector_notes" rows="2"></textarea></div>
+            <div class="col-12"><label class="form-label">Photos</label>
+              <input type="file" class="form-control" name="photos" multiple></div>
+          </div>
+          <button type="submit" class="btn btn-primary mt-3">Save Observations</button>
+        </form>
+      </div>
+
+      <!-- Step 4: Certificate -->
+      <div class="review-step card p-4" id="step4">
+        <h5>Step 4 — Issue Certificate</h5>
+        <div id="obs-summary" class="mb-3"></div>
+        <button class="btn btn-success me-2" onclick="issueCert()">Issue Certificate</button>
+        <button class="btn btn-danger" onclick="showRejectReason('final')">Reject Application</button>
+        <div id="reject-reason-final" style="display:none" class="mt-3">
+          <textarea class="form-control mb-2" id="reason-final" placeholder="Reason..."></textarea>
+          <button class="btn btn-danger btn-sm" onclick="rejectApp()">Confirm Reject</button>
+        </div>
+        <div id="cert-result" class="mt-3"></div>
+      </div>
+    </div>
+  </main>
+</div>
+<script src="../assets/js/api.js"></script>
+<script src="../assets/js/auth.js"></script>
+<script src="../assets/js/utils.js"></script>
+<script>
+if (!requireRole(['lmo','gatc'])) throw '';
+initLayout('officer', 'review');
+const appId = new URLSearchParams(location.search).get('id');
+let app = null;
+
+function showStep(n) {
+  document.querySelectorAll('.review-step').forEach((el,i) => el.classList.toggle('active', i+1 === n));
+  const dots = ['Document Review','Schedule','Observations','Certificate'];
+  document.getElementById('step-ind').innerHTML = dots.map((d,i) =>
+    `<div class="step-dot ${i+1<n?'done':''} ${i+1===n?'current':''}">${i+1}. ${d}</div>`).join('');
+}
+
+function determineStep() {
+  const s = app.status;
+  if (['submitted','under_review','docs_rejected'].includes(s)) return 1;
+  if (s === 'docs_approved') return 2;
+  if (s === 'inspection_scheduled') return 3;
+  if (['inspection_done','verified'].includes(s)) return 4;
+  return 1;
+}
+
+async function loadApp() {
+  app = await get(`/applications/${appId}`);
+  document.getElementById('loading').style.display = 'none';
+  if (!app || app.error) { document.getElementById('review-content').innerHTML = '<p>Not found</p>'; return; }
+  document.getElementById('review-content').style.display = 'block';
+  document.getElementById('inst-label').textContent = app.instrument?.unique_instrument_id;
+  const inst = app.instrument;
+  document.getElementById('doc-info').innerHTML = `<p><strong>${inst.instrument_type}</strong> · ${inst.make||''} · ${inst.serial_number||''}</p>
+    <p>Owner: ${app.applicant?.name} (${app.applicant?.organisation||''})</p>`;
+  let docs = '';
+  if (inst.model_approval_cert_url) docs += `<p>Model Approval: <a href="http://localhost:5000${inst.model_approval_cert_url}" target="_blank">View</a></p>`;
+  if (inst.purchase_invoice_url) docs += `<p>Invoice: <a href="http://localhost:5000${inst.purchase_invoice_url}" target="_blank">View</a></p>`;
+  document.getElementById('doc-preview').innerHTML = docs || '<p class="text-muted">No documents uploaded</p>';
+
+  const perm = PERMISSIBLE_ERRORS[inst.instrument_type] || 0.5;
+  document.getElementById('perm-error').value = perm;
+  document.getElementById('actual-error').oninput = () => {
+    const actual = parseFloat(document.getElementById('actual-error').value) || 0;
+    const ok = actual <= perm;
+    document.getElementById('error-result').innerHTML = ok
+      ? '<span class="text-success fw-bold">✅ Within Limit</span>' : '<span class="text-danger fw-bold">❌ Exceeds Limit</span>';
+  };
+
+  if (app.observations?.length) {
+    const o = app.observations[app.observations.length-1];
+    document.getElementById('obs-summary').innerHTML = `<p>Result: <strong>${o.overall_result}</strong> · Error: ${o.actual_error_observed} (limit: ${o.permissible_error_limit})</p>`;
+  }
+  if (app.certificates?.length) {
+    document.getElementById('cert-result').innerHTML = `<div class="alert alert-success">Certificate issued: ${app.certificates[0].certificate_number}
+      <a href="http://localhost:5000/api/certificates/${app.certificates[0].id}/download" class="btn btn-sm btn-primary ms-2">Download</a></div>`;
+  }
+  showStep(determineStep());
+}
+loadApp();
+
+function showRejectReason(which) {
+  document.getElementById(`reject-reason-${which}`).style.display = 'block';
+}
+
+async function reviewDocs(action) {
+  const reason = document.getElementById('reason-docs')?.value || '';
+  app = await patch(`/applications/${appId}/review`, { action, reason });
+  if (app && !app.error) { showAlert('alert-box', 'Updated', 'success'); loadApp(); }
+  else showAlert('alert-box', app?.error || 'Failed', 'danger');
+}
+
+async function scheduleInspection() {
+  const dt = document.getElementById('inspection_date').value;
+  if (!dt) return showAlert('alert-box', 'Select date/time', 'warning');
+  const itype = document.querySelector('[name=itype]:checked').value;
+  app = await post(`/applications/${appId}/schedule`, { inspection_date: dt, inspection_type: itype });
+  if (app && !app.error) { showAlert('alert-box', 'Inspection scheduled', 'success'); loadApp(); }
+}
+
+document.getElementById('obs-form').onsubmit = async e => {
+  e.preventDefault();
+  const fd = new FormData(e.target);
+  const res = await postForm(`/applications/${appId}/observations`, fd);
+  if (res && res.id) { showAlert('alert-box', 'Observations saved', 'success'); loadApp(); }
+  else showAlert('alert-box', res?.error || 'Failed', 'danger');
+};
+
+async function issueCert() {
+  const res = await post(`/applications/${appId}/certify`, {});
+  if (res && res.certificate_number) {
+    document.getElementById('cert-result').innerHTML = `<div class="alert alert-success">✅ Certificate ${res.certificate_number} issued!
+      <a href="http://localhost:5000/api/certificates/${res.id}/download" class="btn btn-sm btn-primary ms-2">Download</a></div>`;
+    loadApp();
+  } else showAlert('alert-box', res?.error || 'Failed to issue', 'danger');
+}
+
+async function rejectApp() {
+  const reason = document.getElementById('reason-final').value;
+  app = await patch(`/applications/${appId}/reject`, { reason });
+  if (app && !app.error) showAlert('alert-box', 'Application rejected', 'warning');
+}
+</script>
+</body>
+</html>
